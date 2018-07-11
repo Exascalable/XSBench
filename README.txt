@@ -165,7 +165,8 @@ PAUSE     = no
 BENCHMARK = no
 BINARY_DUMP = no
 BINARY_READ = no
-
+USE_CP		= yes
+RESTART		= no
 -> Optimization enables the -O3 optimization flag.
 
 -> Debugging enables the -g flag.
@@ -202,6 +203,13 @@ BINARY_READ = no
    data on-the-fly. This mode is particularly useful if running on
    simulators where walltime minimization is extremely critical for
    logistical reasons.
+   
+-> Use checkpoint mode saves the application state after each benchmark 
+   iteration. It stores the application state in check_<rank>_<benchmark> file.
+   
+-> Restart mode starts the application from a checkpoint file. It loads the 
+   last checkpoint to restart the application. It restarts the application 
+   from the next benchmark.   
 
 ==============================================================================
 MPI Support
@@ -306,6 +314,44 @@ Also note that if you create the grid when specifying the -G flag as
 therefore any subsequent runs using that file in binary read mode must
 also use the "-G nuclide" option. Files generated for the full unionized grid
 can also be used when running in the nuclide grid mode.
+
+==============================================================================
+Checkpoint/Restart Support
+==============================================================================
+
+The flags:
+
+USE_CP = no
+RESTART = no
+
+Use this feature in addition to the Binary File support.
+
+$ vi Makefile
+MPI	= yes
+BENCHMARK = yes
+USE_CP = yes
+BINARY_DUMP = yes
+
+$ make
+
+Run XSBench to create the XSdata file.
+
+$ vi Makefile
+BINARY_DUMP = no
+BINARY_READ = yes
+
+$ make
+
+Run XSBench -> a checkpoint file will be created after each benchmark iteration
+
+To restart:
+$ vi Makefile
+RESTART = yes
+
+$ make
+
+Run XSBench -> load the last checkpoint file and restart the application
+from the next benchmark.
 
 ==============================================================================
 Running on ANL BlueGene/Q (Vesta & Mira)

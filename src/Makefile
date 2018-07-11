@@ -6,14 +6,15 @@ COMPILER    = gnu
 OPTIMIZE    = yes
 DEBUG       = no
 PROFILE     = no
-MPI         = no
+MPI         = yes
 PAPI        = no
 VEC_INFO    = no
 VERIFY      = yes
-BENCHMARK   = no
-BINARY_DUMP = no
+BENCHMARK   = yes
+BINARY_DUMP = yes
 BINARY_READ = no
-
+USE_CP		= no
+RESTART		= no
 #===============================================================================
 # Program name & source code list
 #===============================================================================
@@ -114,6 +115,16 @@ endif
 # Binary read for file I/O based initialization
 ifeq ($(BINARY_READ),yes)
   CFLAGS += -DBINARY_READ
+endif
+
+# Take checkpoint of application state after each benchmark
+ifeq ($(USE_CP),yes)
+  CFLAGS += -DUSE_CP
+endif
+
+# Restart application by loading the last checkpoint
+ifeq ($(RESTART),yes)
+  CFLAGS += -DRESTART
 endif
 
 

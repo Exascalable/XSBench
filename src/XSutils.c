@@ -146,3 +146,80 @@ void binary_read(long n_isotopes, long n_gridpoints, NuclideGridPoint ** nuclide
 	fclose(fp);
 
 }
+
+void application_checkpoint_read(int rank, int *bench, unsigned long long *vhash, Inputs *in, int *num_nucs, int **mats, double **concs) {
+	char filename[20];
+	FILE *fp;
+	int last;
+	sprintf(filename, "tmp_%d", rank);
+	if ((fp = fopen(filename, "rb")) == NULL) {
+		printf("ERROR: Opening file. Please check whether any checkpoint file exists.\n");
+	}
+	while(1) {
+		fread(&last, sizeof(int), 1, fp);
+		if(feof(fp)) break;
+	}
+	fclose(fp);
+
+	sprintf(filename, "check_%d_%d", rank, last);
+	if ((fp = fopen(filename, "rb")) == NULL) {
+		printf("ERROR: Opening file to read. Please check whether any checkpoint file exists.\n");
+	}
+	fread(bench, sizeof(int), 1, fp);
+	fread(vhash, sizeof(unsigned long long), 1, fp);
+
+	fread(&(in->nthreads), sizeof(int), 1, fp);
+	fread(&(in->n_isotopes), sizeof(long), 1, fp);
+	fread(&(in->n_gridpoints), sizeof(long), 1, fp);
+	fread(&(in->lookups), sizeof(int), 1, fp);
+	fread(&(in->grid_type), sizeof(int), 1, fp);
+
+	fread(num_nucs, sizeof(int), 12, fp);
+	for (int i = 0; i < 12; i++) {
+		mats[i] = (int *) malloc(num_nucs[i] * sizeof(int) );
+		fread(mats[i], sizeof(int), num_nucs[i], fp);
+	}
+
+	for (int i = 0; i < 12; i++) {
+		concs[i] = (double *)malloc( num_nucs[i] * sizeof(double) );
+		fread(concs[i], sizeof(double), num_nucs[i], fp);
+	}
+
+	fclose(fp);
+}
+
+void application_checkpoint_write(int rank, int bench, unsigned long long vhash, Inputs in, int *num_nucs, int **mats, double **concs) {
+	char filename[20];
+	FILE *fp;
+	sprintf(filename, "tmp_%d", rank);
+	if ((fp = fopen(filename, "a")) == NULL) {
+		printf("ERROR: Opening file\n");
+	}
+	fwrite(&bench, sizeof(int), 1, fp);
+	fclose(fp);
+
+	sprintf(filename, "check_%d_%d", rank, bench);
+
+	if ((fp = fopen(filename, "wb")) == NULL) {
+		printf("ERROR: Opening file to write\n");
+	}
+
+	fwrite(&bench, sizeof(int), 1, fp);
+	fwrite(&vhash, sizeof(unsigned long long), 1, fp);
+
+	fwrite(&in.nthreads, sizeof(int), 1, fp);
+	fwrite(&in.n_isotopes, sizeof(long), 1, fp);
+	fwrite(&in.n_gridpoints, sizeof(long), 1, fp);
+	fwrite(&in.lookups, sizeof(int), 1, fp);
+	fwrite(&in.grid_type, sizeof(int), 1, fp);
+
+	fwrite(num_nucs, sizeof(int), 12, fp);
+	for (int i = 0; i < 12; i++) {
+		fwrite(mats[i], sizeof(int), num_nucs[i], fp);
+	}
+
+	for (int i = 0; i < 12; i++) {
+		fwrite(concs[i], sizeof(double), num_nucs[i], fp);
+	}
+	fclose(fp);
+}

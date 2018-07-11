@@ -17,6 +17,13 @@ int main( int argc, char* argv[] )
 	double omp_start, omp_end, p_energy;
 	unsigned long long vhash = 0;
 	int nprocs = 1;
+	int bench;
+	NuclideGridPoint ** nuclide_grids;
+	GridPoint * energy_grid;
+	int *num_nucs;
+	int **mats;
+	double **concs;
+	Inputs in;
 
 	#ifdef MPI
 	MPI_Status stat;
@@ -33,89 +40,122 @@ int main( int argc, char* argv[] )
 	srand(time(NULL));
 	#endif
 
-	// Process CLI Fields -- store in "Inputs" structure
-	Inputs in = read_CLI( argc, argv );
-	
-	// Set number of OpenMP Threads
-	omp_set_num_threads(in.nthreads); 
+#ifdef RESTART
+	num_nucs = (int*)malloc(12*sizeof(int));
 
-	// Print-out of Input Summary
-	if( mype == 0 )
-		print_inputs( in, nprocs, version );
+	mats = (int **) malloc( 12 * sizeof(int *) );
 
-	// =====================================================================
-	// Prepare Nuclide Energy Grids, Unionized Energy Grid, & Material Data
-	// =====================================================================
+	concs = (double **)malloc( 12 * sizeof( double *) );
 
-	// Allocate & fill energy grids
-	#ifndef BINARY_READ
-	if( mype == 0) printf("Generating Nuclide Energy Grids...\n");
-	#endif
-	
-	NuclideGridPoint ** nuclide_grids = gpmatrix(in.n_isotopes,in.n_gridpoints);
-	
-	#ifdef VERIFICATION
-	generate_grids_v( nuclide_grids, in.n_isotopes, in.n_gridpoints );	
-	#else
-	generate_grids( nuclide_grids, in.n_isotopes, in.n_gridpoints );	
-	#endif
-	
+	application_checkpoint_read(mype, &bench, &vhash, &in,
+			num_nucs, mats, concs);
+
+	omp_set_num_threads(in.nthreads);
+	//Read nuclide_grid and energy_grid
+	nuclide_grids = gpmatrix(in.n_isotopes, in.n_gridpoints);
+
+	energy_grid = NULL;
+	int * index_data = NULL;
+
+	if (in.grid_type == UNIONIZED) {
+		// Prepare Unionized Energy Grid Framework
+
+		energy_grid = (GridPoint *) malloc(
+				in.n_isotopes * in.n_gridpoints * sizeof(GridPoint));
+		index_data = (int *) malloc(
+				in.n_isotopes * in.n_gridpoints * in.n_isotopes
+				* sizeof(int));
+		for (i = 0; i < in.n_isotopes * in.n_gridpoints; i++)
+			energy_grid[i].xs_ptrs = &index_data[i * in.n_isotopes];
+	}
+
+#ifdef BINARY_READ
+	if( mype == 0 ) printf("Reading data from \"XS_data.dat\" file...\n");
+	binary_read(in.n_isotopes, in.n_gridpoints, nuclide_grids, energy_grid, in.grid_type);
+#endif
+#else
+	//Initialize
+	bench = 1;
+	vhash = 0;
+	in = read_CLI(argc, argv);
+	omp_set_num_threads(in.nthreads);
+	if (mype == 0)
+		print_inputs(in, nprocs, version);
+
+#ifndef BINARY_READ
+	if (mype == 0)
+		printf("Generating Nuclide Energy Grids...\n");
+#endif
+
+	nuclide_grids = gpmatrix(in.n_isotopes, in.n_gridpoints);
+
+#ifdef VERIFICATION
+	generate_grids_v( nuclide_grids, in.n_isotopes, in.n_gridpoints );
+#else
+	generate_grids(nuclide_grids, in.n_isotopes, in.n_gridpoints);
+#endif
+
 	// Sort grids by energy
-	#ifndef BINARY_READ
-	if( mype == 0) printf("Sorting Nuclide Energy Grids...\n");
-	sort_nuclide_grids( nuclide_grids, in.n_isotopes, in.n_gridpoints );
-	#endif
+#ifndef BINARY_READ
+	if (mype == 0)
+		printf("Sorting Nuclide Energy Grids...\n");
+	sort_nuclide_grids(nuclide_grids, in.n_isotopes, in.n_gridpoints);
+#endif
 
 	// If using a unionized grid search, initialize the energy grid
 	// Otherwise, leave these as null
-	GridPoint * energy_grid = NULL;
+	energy_grid = NULL;
 	int * index_data = NULL;
 
-	if( in.grid_type == UNIONIZED )
-	{
+	if (in.grid_type == UNIONIZED) {
 		// Prepare Unionized Energy Grid Framework
-		#ifndef BINARY_READ
-		energy_grid = generate_energy_grid( in.n_isotopes,
-											in.n_gridpoints, nuclide_grids ); 	
-		#else
+#ifndef BINARY_READ
+		energy_grid = generate_energy_grid(in.n_isotopes, in.n_gridpoints,
+				nuclide_grids);
+#else
 		energy_grid = (GridPoint *)malloc( in.n_isotopes *
-										   in.n_gridpoints * sizeof( GridPoint ) );
+				in.n_gridpoints * sizeof( GridPoint ) );
 		index_data = (int *) malloc( in.n_isotopes * in.n_gridpoints
-										   * in.n_isotopes * sizeof(int));
+				* in.n_isotopes * sizeof(int));
 		for( i = 0; i < in.n_isotopes*in.n_gridpoints; i++ )
 			energy_grid[i].xs_ptrs = &index_data[i*in.n_isotopes];
-		#endif
+#endif
 
 		// Double Indexing. Filling in energy_grid with pointers to the
 		// nuclide_energy_grids.
-		#ifndef BINARY_READ
-		initialization_do_not_profile_set_grid_ptrs( energy_grid, nuclide_grids, in.n_isotopes, in.n_gridpoints );
-		#endif
+#ifndef BINARY_READ
+		initialization_do_not_profile_set_grid_ptrs(energy_grid,
+				nuclide_grids, in.n_isotopes, in.n_gridpoints);
+#endif
 	}
 
-	#ifdef BINARY_READ
+#ifdef BINARY_READ
 	if( mype == 0 ) printf("Reading data from \"XS_data.dat\" file...\n");
 	binary_read(in.n_isotopes, in.n_gridpoints, nuclide_grids, energy_grid, in.grid_type);
-	#endif
-	
+#endif
+
 	// Get material data
-	if( mype == 0 )
+	if (mype == 0)
 		printf("Loading Mats...\n");
-	int *num_nucs  = load_num_nucs(in.n_isotopes);
-	int **mats     = load_mats(num_nucs, in.n_isotopes);
+	num_nucs = load_num_nucs(in.n_isotopes);
+	mats = load_mats(num_nucs, in.n_isotopes);
 
-	#ifdef VERIFICATION
-	double **concs = load_concs_v(num_nucs);
-	#else
-	double **concs = load_concs(num_nucs);
-	#endif
+#ifdef VERIFICATION
+	concs = load_concs_v(num_nucs);
+#else
+	concs = load_concs(num_nucs);
+#endif
 
-	#ifdef BINARY_DUMP
+#ifdef BINARY_DUMP
 	if( mype == 0 ) printf("Dumping data to binary file...\n");
 	binary_dump(in.n_isotopes, in.n_gridpoints, nuclide_grids, energy_grid, in.grid_type);
 	if( mype == 0 ) printf("Binary file \"XS_data.dat\" written! Exiting...\n");
+#ifdef MPI
+	MPI_Finalize();
+#endif
 	return 0;
-	#endif
+#endif
+#endif
 
 	// =====================================================================
 	// Cross Section (XS) Parallel Lookup Simulation Begins
@@ -123,7 +163,7 @@ int main( int argc, char* argv[] )
 
 	// Outer benchmark loop can loop through all possible # of threads
 	#ifdef BENCHMARK
-	for( int bench_n = 1; bench_n <=omp_get_num_procs(); bench_n++ )
+	for( int bench_n = bench; bench_n <=omp_get_num_procs(); bench_n++ )
 	{
 		in.nthreads = bench_n;
 		omp_set_num_threads(in.nthreads);
@@ -258,6 +298,9 @@ int main( int argc, char* argv[] )
 	print_results( in, mype, omp_end-omp_start, nprocs, vhash );
 
 	#ifdef BENCHMARK
+#ifdef USE_CP
+	application_checkpoint_write(mype, bench_n, vhash, in, num_nucs, mats, concs);
+#endif
 	}
 	#endif
 

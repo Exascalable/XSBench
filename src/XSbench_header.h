@@ -117,6 +117,7 @@ void print_results( Inputs in, int mype, double runtime, int nprocs, unsigned lo
 void binary_dump(long n_isotopes, long n_gridpoints, NuclideGridPoint ** nuclide_grids, GridPoint * energy_grid, int grid_type);
 void binary_read(long n_isotopes, long n_gridpoints, NuclideGridPoint ** nuclide_grids, GridPoint * energy_grid, int grid_type);
 
-
+void application_checkpoint_read(int rank, int *bench, unsigned long long *vhash, Inputs *in, int *num_nucs, int **mats, double **concs);
+void application_checkpoint_write(int rank, int bench, unsigned long long vhash, Inputs in, int *num_nucs, int **mats, double **concs);
 
 #endif
